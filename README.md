@@ -1,6 +1,13 @@
 # Ledger Linker
 
-A minimal landing page built with Jekyll for GitHub Pages, with a primary link to [DataflowPH](https://jhoibclemente.github.io/dataflowph-site/index.html#approach).
+A bank statement workspace with regular-user and administrator accounts, PDF
+extraction, reviewed CSV aggregation, private submission history and admin settings.
+
+The full application runs on Render with a persistent disk. GitHub Pages hosts
+the landing page and static login UI only. See [DEPLOYMENT.md](DEPLOYMENT.md) for
+deployment, account setup, supported layouts and Python development instructions.
+
+[Deploy application on Render](https://render.com/deploy?repo=https://github.com/jhoibclemente/ledger_linker)
 
 ## Local development
 

@@ -1,0 +1,19 @@
+name: Test statement application
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+      - run: node --check app/app.js
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m tests.browser_smoke

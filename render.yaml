@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: ledger-linker
+    runtime: docker
+    plan: starter
+    region: singapore
+    healthCheckPath: /api/health
+    numInstances: 1
+    disk:
+      name: ledger-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: SECURE_COOKIES
+        value: "true"
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

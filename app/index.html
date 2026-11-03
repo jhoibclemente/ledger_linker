@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#183c34">
+  <meta name="description" content="Convert BPI, BDO and UnionBank statements into one consistent CSV.">
+  <title>Ledger Linker — Statements, together</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <div id="notice" role="status" aria-live="polite" hidden></div>
+  <div id="auth-view" class="auth-layout">
+    <aside class="intro-panel">
+      <a href="./" class="brand"><span class="brand-mark">ll<span>→</span></span> Ledger Linker</a>
+      <div class="intro-content">
+        <p class="eyebrow">LESS COPYING. MORE CLARITY.</p>
+        <h1>Your statements.<br>One clear view.</h1>
+        <p>Bring your bank statements together in a consistent, ready-to-use CSV. Keep every account in its own lane.</p>
+        <div class="ledger-art" aria-hidden="true">
+          <div class="bank-row"><span class="bank-icon bpi">BPI</span><span>Bank of the Philippine Islands</span><span>→</span></div>
+          <div class="bank-row"><span class="bank-icon bdo">BDO</span><span>Banco de Oro</span><span>→</span></div>
+          <div class="bank-row"><span class="bank-icon union">UB</span><span>UnionBank</span><span>→</span></div>
+          <div class="csv-art"><span class="file-icon">CSV</span><div><strong>One organized ledger</strong><small>Same columns. Clear sources. Aligned dates.</small></div><span class="checkmark">✓</span></div>
+        </div>
+        <div class="intro-foot"><span>01 / Upload</span><span>02 / Review</span><span>03 / Download</span></div>
+      </div>
+      <small class="panel-footer">A little order goes a long way.</small>
+    </aside>
+    <main id="main" class="auth-main">
+      <div class="auth-card">
+        <p class="eyebrow">YOUR FINANCIAL WORKSPACE</p>
+        <h2 id="auth-title">Welcome back.</h2>
+        <p class="muted" id="auth-subtitle">Sign in to pick up where you left off.</p>
+        <div class="tabs" aria-label="Account access"><button id="login-tab" aria-pressed="true" class="selected">Sign in</button><button id="register-tab" aria-pressed="false">Create account</button></div>
+        <div id="connection" class="connection" role="status">Connecting to account services…</div>
+        <form id="auth-form">
+          <div id="name-field" hidden><label for="name">Full name</label><input id="name" autocomplete="name" maxlength="100"></div>
+          <label for="email">Email address</label><input id="email" type="email" placeholder="you@example.com" autocomplete="username" required maxlength="254">
+          <label for="password">Password</label><input id="password" type="password" placeholder="Enter your password" autocomplete="current-password" required maxlength="128">
+          <small id="password-help" hidden>Use at least 12 characters.</small>
+          <div id="role-field"><label for="access">Workspace</label><select id="access"><option value="user">Regular user · My statements</option><option value="admin">Administrator · All submissions</option></select><small>Your account permissions determine your access.</small></div>
+          <button id="auth-submit" type="submit" class="primary wide" disabled>Sign in <span>→</span></button>
+        </form>
+        <p class="auth-note">Your submissions are private to your account and authorized administrators.</p>
+        <p class="support-note">Need admin access or help with your password? Contact your workspace administrator.</p>
+      </div>
+      <footer class="auth-footer">BPI <span>·</span> BDO <span>·</span> UnionBank <span class="tag">PHP STATEMENTS</span></footer>
+    </main>
+  </div>
+
+  <div id="workspace-view" hidden>
+    <header class="app-header"><a href="./" class="brand"><span class="brand-mark">ll<span>→</span></span> Ledger Linker</a><div class="account-menu"><span id="user-label"></span><span id="role-badge" class="badge"></span><button id="signout" class="quiet">Sign out</button></div></header>
+    <div class="app-layout">
+      <nav class="sidebar" aria-label="Workspace"><p class="eyebrow">WORKSPACE</p><button data-view="upload" class="nav-item active"><span>＋</span> New conversion</button><button data-view="history" class="nav-item"><span>▤</span> <span id="history-nav-label">My submissions</span></button><button data-view="settings" id="settings-nav" class="nav-item" hidden><span>⚙</span> Admin settings</button><button data-view="account" class="nav-item"><span>◎</span> Account</button><div class="sidebar-note"><strong>A consistent ledger.</strong><p>Dates in ISO format. Amounts in PHP. Every source accounted for.</p></div></nav>
+      <main id="workspace-main" tabindex="-1">
+        <section id="upload-view" class="workspace-section">
+          <div class="page-heading"><div><p class="eyebrow">STATEMENTS → SPREADSHEET</p><h1>Bring it all together.</h1><p class="muted">Upload your statements. Review the details. Download one clean CSV.</p></div><span class="pill">BPI · BDO · UnionBank</span></div>
+          <div class="stepper"><span class="current">1 <strong>Upload statements</strong></span><i></i><span>2 <strong>Review transactions</strong></span><i></i><span>3 <strong>Download CSV</strong></span></div>
+          <form id="upload-form" class="card">
+            <div class="card-heading"><div><h2>Start a new conversion</h2><p class="muted">Combine multiple statements from different accounts in one batch.</p></div><span class="mini-tag">PDF ONLY</span></div>
+            <label for="batch-title">Submission name</label><input id="batch-title" maxlength="100" placeholder="e.g. October 2026 · Business accounts" required>
+            <div class="dropzone" id="dropzone"><span class="upload-symbol">↑</span><strong>Drop your bank statements here</strong><span>or choose PDFs from your device</span><label for="pdf-files" class="button secondary">Choose PDF files</label><input id="pdf-files" type="file" accept=".pdf,application/pdf" multiple class="file-input"><small id="upload-limits">Up to 10 PDFs · 10 MB each · 50 MB total</small></div>
+            <div id="file-list"></div>
+            <div class="info-box"><strong>A quick check before you upload</strong><p>Use unlocked, text-based PHP deposit statements with date, description, debit, credit and balance columns. Enter the year when transaction dates omit it. For a statement spanning two years, use PDFs that include full dates.</p></div>
+            <div class="form-footer"><p class="muted">You’ll review every transaction before creating your CSV.</p><button type="submit" id="convert" class="primary" disabled>Extract & review <span>→</span></button></div>
+          </form>
+          <div class="feature-grid"><div><span>01</span><h3>Every account stays distinct</h3><p>Bank, account number and source filename travel with each transaction.</p></div><div><span>02</span><h3>Dates that line up</h3><p>One YYYY-MM-DD format across every supported statement.</p></div><div><span>03</span><h3>Ready when you are</h3><p>Find your past submissions and download your CSVs or original PDFs.</p></div></div>
+        </section>
+        <section id="history-view" class="workspace-section" hidden><div class="page-heading"><div><p class="eyebrow" id="history-eyebrow">YOUR RECORDS</p><h1 id="history-title">My submissions</h1><p class="muted" id="history-description">Your statements and exports, in one place. Showing the latest 500 submissions.</p></div><button class="secondary" id="refresh-history">Refresh</button></div><label for="search">Search submissions</label><input type="search" id="search" placeholder="Search by name or owner"><div id="submission-list" class="submission-list"></div></section>
+        <section id="review-view" class="workspace-section" hidden><button id="back-history" class="quiet">← Back to submissions</button><div class="page-heading"><div><p class="eyebrow">CHECK BEFORE YOU EXPORT</p><h1 id="review-title">Review transactions</h1><p class="muted" id="review-description"></p></div><span class="pill" id="review-count"></span></div><div class="info-box"><strong>Check against your original statements.</strong><p>Review dates, descriptions, debits, credits and balances. Sources stay fixed. Duplicate-looking transactions are retained; overlapping statements can repeat transactions. Account numbers remain text, including leading zeros.</p></div><div class="table-wrap"><table id="review-table"><caption class="sr-only">Extracted statement transactions</caption><thead><tr><th>Bank / account</th><th>Source</th><th>Date</th><th>Description</th><th>Debit (PHP)</th><th>Credit (PHP)</th><th>Balance (PHP)</th></tr></thead><tbody id="review-rows"></tbody></table></div><div id="original-files" class="original-files"></div><div class="review-actions"><label id="review-check-label" class="checkbox"><input id="review-check" type="checkbox"> I checked all transactions against the original statements.</label><button id="confirm" class="primary" disabled>Confirm & create CSV →</button><a id="download-ready" class="button primary" hidden>Download aggregated CSV ↓</a></div></section>
+        <section id="settings-view" class="workspace-section" hidden><div class="page-heading"><div><p class="eyebrow">ADMINISTRATION</p><h1>Workspace settings</h1><p class="muted">Manage registration and statement upload limits for all users.</p></div></div><form id="settings-form" class="card narrow"><h2>Access & upload limits</h2><label class="checkbox"><input type="checkbox" id="registration-open"> Allow new user registrations</label><label for="max-files">Maximum PDFs per submission</label><input id="max-files" type="number" min="1" max="10" required><label for="max-mb">Maximum file size (MB)</label><input id="max-mb" type="number" min="1" max="20" required><p class="muted">The combined batch limit is 50 MB. Each PDF may contain up to 50 pages.</p><button type="submit" class="primary">Save settings</button></form></section>
+        <section id="account-view" class="workspace-section" hidden><div class="page-heading"><div><p class="eyebrow">YOUR ACCOUNT</p><h1>Account settings</h1><p id="account-info" class="muted"></p></div></div><form id="password-form" class="card narrow"><h2>Change password</h2><label for="current-password">Current password</label><input type="password" id="current-password" autocomplete="current-password" required maxlength="128"><label for="new-password">New password</label><input type="password" id="new-password" autocomplete="new-password" required minlength="12" maxlength="128"><small>At least 12 characters. Changing it signs out all active sessions.</small><button type="submit" class="primary">Update password</button></form></section>
+      </main>
+    </div>
+  </div>
+  <dialog id="delete-dialog"><form method="dialog"><h2>Delete this submission?</h2><p>This permanently removes the transactions, CSV export and original PDFs.</p><div class="dialog-actions"><button value="cancel" class="secondary">Keep submission</button><button value="delete" class="danger">Delete submission</button></div></form></dialog>
+</body>
+</html>

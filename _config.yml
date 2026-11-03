@@ -6,3 +6,12 @@ exclude:
   - Gemfile
   - Gemfile.lock
   - README.md
+  - backend
+  - tests
+  - Dockerfile
+  - render.yaml
+  - requirements.txt
+  - requirements-dev.txt
+  - data
+  - artifacts
+  - DEPLOYMENT.md
