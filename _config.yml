@@ -1,0 +1,8 @@
+title: Ledger Linker
+description: Follow the development of Ledger Linker.
+url: "https://jhoibclemente.github.io"
+baseurl: "/ledger_linker"
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - README.md
