@@ -113,10 +113,14 @@ def main():
                 browser.close()
                 print("Browser flow passed: registration, login, 3-bank PDF upload, review, CSV download, mobile layout, admin access and persisted settings.")
         except Exception:
+            failure = traceback.format_exc()
+            if os.environ.get("CI"):
+                annotation = failure.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+                print("::error title=Browser verification::" + annotation, flush=True)
             summary = os.environ.get("GITHUB_STEP_SUMMARY")
             if summary:
                 with open(summary, "a") as report:
-                    report.write("## Browser verification failure\n\n```text\n" + traceback.format_exc() + "\n```\n")
+                    report.write("## Browser verification failure\n\n```text\n" + failure + "\n```\n")
             raise
         finally:
             server.terminate()
