@@ -1,4 +1,4 @@
-"""Prepare a newly mounted Render disk, then drop privileges before serving."""
+"""Drop privileges before serving; only local development uses a data directory."""
 import os
 from pathlib import Path
 
@@ -6,13 +6,14 @@ from pathlib import Path
 def main():
     data = Path(os.environ.get("DATA_DIR", "/var/data"))
     if os.getuid() == 0:
-        data.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chown(data, 10001, 10001)
-        os.chmod(data, 0o700)
-        for name in ["ledger.sqlite3", "ledger.sqlite3-wal", "ledger.sqlite3-shm"]:
-            path = data / name
-            if path.exists() and not path.is_symlink():
-                os.chown(path, 10001, 10001)
+        if os.environ.get("STORAGE_BACKEND", "sqlite") == "sqlite":
+            data.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chown(data, 10001, 10001)
+            os.chmod(data, 0o700)
+            for name in ["ledger.sqlite3", "ledger.sqlite3-wal", "ledger.sqlite3-shm"]:
+                path = data / name
+                if path.exists() and not path.is_symlink():
+                    os.chown(path, 10001, 10001)
         os.setgroups([])
         os.setgid(10001)
         os.setuid(10001)

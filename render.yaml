@@ -2,17 +2,20 @@ services:
   - type: web
     name: ledger-linker
     runtime: docker
-    plan: starter
+    plan: free
     region: singapore
     healthCheckPath: /api/health
-    numInstances: 1
-    disk:
-      name: ledger-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
-      - key: DATA_DIR
-        value: /var/data
+      - key: STORAGE_BACKEND
+        value: supabase
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: ledger-statements
       - key: SECURE_COOKIES
         value: "true"
       - key: ADMIN_EMAIL

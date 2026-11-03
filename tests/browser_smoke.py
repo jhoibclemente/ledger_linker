@@ -28,7 +28,10 @@ def main():
             port = sock.getsockname()[1]
         base = f"http://127.0.0.1:{port}"
         env = {**os.environ, "DATA_DIR": directory, "SECURE_COOKIES": "false",
-               "ADMIN_EMAIL": "admin@example.com", "ADMIN_PASSWORD": password}
+               "ADMIN_EMAIL": "admin@example.com", "ADMIN_PASSWORD": password,
+               "STORAGE_BACKEND": "sqlite"}
+        for key in ["DATABASE_URL", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_BUCKET", "APP_ORIGIN"]:
+            env.pop(key, None)
         server = subprocess.Popen([sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", str(port)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             for _ in range(100):

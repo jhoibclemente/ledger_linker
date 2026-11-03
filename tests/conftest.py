@@ -8,6 +8,15 @@ from reportlab.pdfgen.canvas import Canvas
 from backend import main
 
 
+@pytest.fixture(autouse=True)
+def isolated_test_storage(monkeypatch):
+    # Never let a developer's production credentials turn a local test into
+    # writes to a real account database. Remote tests supply their own fixtures.
+    for name in ["DATABASE_URL", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_BUCKET", "APP_ORIGIN"]:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("STORAGE_BACKEND", "sqlite")
+
+
 def statement_pdf(bank="BPI", account="0012345678", rows=None, headers=None, right_aligned=False):
     stream = io.BytesIO()
     canvas = Canvas(stream, pagesize=(700, 800))

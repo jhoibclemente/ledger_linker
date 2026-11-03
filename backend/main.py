@@ -9,7 +9,6 @@ import os
 import re
 import secrets
 import shutil
-import sqlite3
 import subprocess
 import sys
 import threading
@@ -23,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from backend.parser import BANKS, SCHEMA, StatementError, extract_statement, normalize_record
+from backend import persistence, storage
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "./data"))
 DB_PATH = DATA_DIR / "ledger.sqlite3"
@@ -42,14 +42,8 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
 
 @contextmanager
 def database():
-    connection = sqlite3.connect(DB_PATH, timeout=15)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys=ON")
-    try:
-        with connection:
-            yield connection
-    finally:
-        connection.close()
+    with persistence.database(DB_PATH) as connection:
+        yield connection
 
 
 def password_hash(password, salt=None):
@@ -75,28 +69,14 @@ def email_address(value):
 
 
 def initialize():
-    DATA_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    remote = persistence.remote()
+    if remote:
+        storage.ensure_private_bucket()
+    else:
+        DATA_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     with database() as db:
-        db.executescript("""
-        PRAGMA journal_mode=WAL;
-        CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
-          password TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('user','admin')),
-          created_at INTEGER NOT NULL);
-        CREATE TABLE IF NOT EXISTS sessions (
-          token TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          csrf TEXT NOT NULL, expires INTEGER NOT NULL);
-        CREATE TABLE IF NOT EXISTS submissions (
-          id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), created_at INTEGER NOT NULL,
-          title TEXT NOT NULL, status TEXT NOT NULL, records TEXT NOT NULL, file_count INTEGER NOT NULL);
-        CREATE TABLE IF NOT EXISTS files (
-          id TEXT PRIMARY KEY, submission_id TEXT NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
-          filename TEXT NOT NULL, content BLOB NOT NULL);
-        CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, expires INTEGER NOT NULL);
-        CREATE INDEX IF NOT EXISTS submissions_owner ON submissions(user_id, created_at);
-        """)
-        db.execute("INSERT OR IGNORE INTO settings VALUES (1, ?)", (json.dumps(DEFAULT_SETTINGS),))
+        persistence.create_schema(db)
+        db.execute("INSERT INTO settings VALUES (1, ?) ON CONFLICT(id) DO NOTHING", (json.dumps(DEFAULT_SETTINGS),))
         admin_email = os.environ.get("ADMIN_EMAIL")
         admin_password = os.environ.get("ADMIN_PASSWORD")
         if admin_email and admin_password and not db.execute("SELECT 1 FROM users WHERE role='admin'").fetchone():
@@ -106,7 +86,30 @@ def initialize():
                 raise RuntimeError("Bootstrap email already belongs to a user; use the offline admin CLI.")
             db.execute("INSERT INTO users VALUES (?, ?, ?, ?, 'admin', ?)",
                        (secrets.token_hex(16), email, "Administrator", password_hash(admin_password), int(time.time())))
-    os.chmod(DB_PATH, 0o600)
+    if not remote:
+        os.chmod(DB_PATH, 0o600)
+    else:
+        cleanup_pending_objects()
+
+
+def clear_cleanup_intents(keys):
+    with database() as db:
+        for key in keys:
+            db.execute("DELETE FROM storage_cleanup WHERE object_key=?", (key,))
+
+
+def cleanup_pending_objects():
+    # A durable pre-upload intent survives crashes and failed compensation.
+    # Give active requests a full hour before retrying their cleanup.
+    with database() as db:
+        keys = [row["object_key"] for row in db.execute("SELECT object_key FROM storage_cleanup WHERE created_at<? AND NOT EXISTS (SELECT 1 FROM files WHERE files.object_key=storage_cleanup.object_key) LIMIT 100", (int(time.time()) - 3600,)).fetchall()]
+    if keys:
+        try:
+            storage.delete(keys)
+            clear_cleanup_intents(keys)
+        except storage.StorageError:
+            # Keep durable intents for the next startup or upload retry.
+            pass
 
 
 class BodyLimit:
@@ -134,6 +137,11 @@ app.add_middleware(BodyLimit)
 @app.exception_handler(json.JSONDecodeError)
 async def invalid_json(request, error):
     return JSONResponse({"detail": "The request must contain valid JSON."}, status_code=400)
+
+
+@app.exception_handler(storage.StorageError)
+async def storage_unavailable(request, error):
+    return JSONResponse({"detail": str(error)}, status_code=503)
 
 
 async def payload(request):
@@ -200,7 +208,7 @@ def rate_limit(request, category, identity="", limit=10, seconds=900):
             if row and row["attempts"] >= limit:
                 raise HTTPException(429, "Too many attempts. Please try again later.")
         for key in keys:
-            db.execute("INSERT INTO rate_limits VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1", (key, now + seconds))
+            db.execute("INSERT INTO rate_limits VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=rate_limits.attempts+1", (key, now + seconds))
 
 
 def current_user(request, admin=False):
@@ -223,7 +231,7 @@ def public_user(user):
 
 def settings():
     with database() as db:
-        return json.loads(db.execute("SELECT value FROM settings WHERE id=1").fetchone()[0])
+        return json.loads(db.execute("SELECT value FROM settings WHERE id=1").fetchone()["value"])
 
 
 @app.get("/api/health")
@@ -247,7 +255,7 @@ async def register(request: Request):
         with database() as db:
             db.execute("INSERT INTO users VALUES (?, ?, ?, ?, 'user', ?)",
                        (secrets.token_hex(16), email, name, password_hash(password), int(time.time())))
-    except sqlite3.IntegrityError:
+    except persistence.INTEGRITY_ERRORS:
         raise HTTPException(409, "An account already exists for this email. Please sign in.")
     return {"message": "Account created. Sign in to continue."}
 
@@ -299,7 +307,8 @@ def list_submissions(request: Request):
     user = current_user(request)
     clause, params = ("", ()) if user["role"] == "admin" else ("WHERE s.user_id=?", (user["id"],))
     with database() as db:
-        rows = db.execute(f"SELECT s.id,s.created_at,s.title,s.status,s.file_count,json_array_length(s.records) AS row_count,u.email AS owner FROM submissions s JOIN users u ON s.user_id=u.id {clause} ORDER BY s.created_at DESC LIMIT 500", params).fetchall()
+        array_length = "json_array_length(s.records::json)" if db.postgres else "json_array_length(s.records)"
+        rows = db.execute(f"SELECT s.id,s.created_at,s.title,s.status,s.file_count,{array_length} AS row_count,u.email AS owner FROM submissions s JOIN users u ON s.user_id=u.id {clause} ORDER BY s.created_at DESC LIMIT 500", params).fetchall()
     return [dict(row) for row in rows]
 
 
@@ -317,7 +326,7 @@ async def upload(request: Request):
     rate_limit(request, "upload", user["id"], limit=20, seconds=3600)
     limits = settings()
     with database() as db:
-        if db.execute("SELECT count(*) FROM submissions WHERE user_id=?", (user["id"],)).fetchone()[0] >= 100:
+        if db.execute("SELECT count(*) AS n FROM submissions WHERE user_id=?", (user["id"],)).fetchone()["n"] >= 100:
             raise HTTPException(400, "You have reached 100 submissions. Delete older submissions before uploading.")
     try:
         async with request.form(max_files=10, max_fields=5, max_part_size=65536) as form:
@@ -353,13 +362,47 @@ async def upload(request: Request):
     except (ValueError, TypeError) as exc:
         raise HTTPException(400, "Invalid file details. Check the selected bank, account and year.") from exc
     submission_id = secrets.token_hex(16)
-    if shutil.disk_usage(DATA_DIR).free < total + 100 * 1024 * 1024:
+    remote = persistence.remote()
+    if not remote and shutil.disk_usage(DATA_DIR).free < total + 100 * 1024 * 1024:
         raise HTTPException(507, "Storage is nearly full. Ask your administrator to free space or expand the disk.")
     title = str(form.get("title", "Statement batch")).strip()[:100] or "Statement batch"
-    with database() as db:
-        db.execute("INSERT INTO submissions VALUES (?,?,?,?,?,?,?)", (submission_id, user["id"], int(time.time()), title, "draft", json.dumps(records), len(originals)))
+    stored = []
+    try:
+        file_rows = []
         for filename, content in originals:
-            db.execute("INSERT INTO files VALUES (?,?,?,?)", (secrets.token_hex(16), submission_id, filename, content))
+            file_id = secrets.token_hex(16)
+            key = f"{user['id']}/{submission_id}/{file_id}.pdf" if remote else None
+            file_rows.append((file_id, submission_id, filename, b"" if remote else content, key))
+        if remote:
+            await run_in_threadpool(cleanup_pending_objects)
+            stored = [row[4] for row in file_rows]
+            with database() as db:
+                for key in stored:
+                    db.execute("INSERT INTO storage_cleanup VALUES (?,?)", (key, int(time.time())))
+            for (_, content), row in zip(originals, file_rows):
+                await run_in_threadpool(storage.upload, row[4], content)
+        with database() as db:
+            db.execute("INSERT INTO submissions VALUES (?,?,?,?,?,?,?)", (submission_id, user["id"], int(time.time()), title, "draft", json.dumps(records), len(originals)))
+            for file_row in file_rows:
+                db.execute("INSERT INTO files (id,submission_id,filename,content,object_key) VALUES (?,?,?,?,?)", file_row)
+            for key in stored:
+                db.execute("DELETE FROM storage_cleanup WHERE object_key=?", (key,))
+    except Exception:
+        if stored:
+            try:
+                # A successful commit can lose its acknowledgement. Re-read on
+                # a fresh connection before compensation so a committed batch
+                # never loses its originals. If DB is down, durable intents
+                # retain enough information for a safe later retry.
+                with database() as db:
+                    safe = [key for key in stored if db.execute("SELECT object_key FROM storage_cleanup WHERE object_key=? AND NOT EXISTS (SELECT 1 FROM files WHERE files.object_key=storage_cleanup.object_key)", (key,)).fetchone()]
+                if safe:
+                    await run_in_threadpool(storage.delete, safe)
+                    clear_cleanup_intents(safe)
+            except (storage.StorageError, *persistence.DATABASE_ERRORS):
+                # Retain durable intents for retry. Never report a saved batch.
+                pass
+        raise
     return {"id": submission_id, "records": records}
 
 
@@ -424,12 +467,18 @@ def download_pdf(submission_id: str, file_id: str, request: Request):
         row = db.execute("SELECT * FROM files WHERE id=? AND submission_id=?", (file_id, submission_id)).fetchone()
     if not row:
         raise HTTPException(404, "File not found.")
-    return Response(row["content"], media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="statement.pdf"'})
+    content = storage.download(row["object_key"]) if row["object_key"] else bytes(row["content"])
+    return Response(content, media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="statement.pdf"'})
 
 
 @app.delete("/api/submissions/{submission_id}")
 def delete_submission(submission_id: str, request: Request):
     authorized_submission(current_user(request), submission_id)
+    with database() as db:
+        keys = [row["object_key"] for row in db.execute("SELECT object_key FROM files WHERE submission_id=?", (submission_id,)).fetchall() if row["object_key"]]
+    if keys:
+        # Keep metadata when remote deletion fails so the user can retry.
+        storage.delete(keys)
     with database() as db:
         db.execute("DELETE FROM submissions WHERE id=?", (submission_id,))
     return {"message": "Submission and original PDFs deleted."}
