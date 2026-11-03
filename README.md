@@ -4,7 +4,7 @@ A minimal landing page built with Jekyll for GitHub Pages, with a primary link t
 
 ## Local development
 
-Use Ruby 3.1 and Bundler 2.6.9:
+Use Ruby 3.3 (as specified in `.ruby-version`) and Bundler 2.6.9:
 
 ```sh
 bundle install
