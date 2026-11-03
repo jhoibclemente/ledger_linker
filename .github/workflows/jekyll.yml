@@ -66,3 +66,5 @@ jobs:
         run: |
           curl --fail --location --retry 12 --retry-delay 10 --retry-all-errors "$PAGE_URL" --output /tmp/published.html
           grep -Fq 'Ledger Linker — A clearer view of your records' /tmp/published.html
+          curl --fail --location --retry 6 --retry-delay 10 --retry-all-errors "${PAGE_URL%/}/app/" --output /tmp/login.html
+          grep -Fq 'id="auth-form"' /tmp/login.html

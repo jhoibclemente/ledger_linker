@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from pathlib import Path
 
 import httpx
@@ -40,7 +41,9 @@ def main():
             else:
                 raise AssertionError("Test server did not start")
             with sync_playwright() as playwright:
-                executable = os.environ.get("CHROMIUM_PATH") or shutil.which("chromium")
+                # CI must use the Playwright-managed revision, not Ubuntu's
+                # optional Chromium/snap wrapper discovered on PATH.
+                executable = os.environ.get("CHROMIUM_PATH") or (None if os.environ.get("CI") else shutil.which("chromium"))
                 browser = playwright.chromium.launch(executable_path=executable, args=["--no-sandbox"])
                 page = browser.new_page(viewport={"width": 1440, "height": 1000})
                 errors = []
@@ -109,6 +112,12 @@ def main():
                 assert not errors, errors
                 browser.close()
                 print("Browser flow passed: registration, login, 3-bank PDF upload, review, CSV download, mobile layout, admin access and persisted settings.")
+        except Exception:
+            summary = os.environ.get("GITHUB_STEP_SUMMARY")
+            if summary:
+                with open(summary, "a") as report:
+                    report.write("## Browser verification failure\n\n```text\n" + traceback.format_exc() + "\n```\n")
+            raise
         finally:
             server.terminate()
             server.wait(timeout=10)
