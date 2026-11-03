@@ -110,9 +110,17 @@ async function view(name) {
   document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === name));
   if (name === 'history') await loadHistory();
   if (name === 'settings') {
-    const data = await api('/admin/settings');
-    $('registration-open').checked = data.registration_open;
-    $('max-files').value = data.max_files; $('max-mb').value = data.max_file_mb;
+    const controls = [...$('settings-form').querySelectorAll('input, button')];
+    controls.forEach((control) => { control.disabled = true; });
+    $('settings-form').setAttribute('aria-busy', 'true');
+    try {
+      const data = await api('/admin/settings');
+      $('registration-open').checked = data.registration_open;
+      $('max-files').value = data.max_files; $('max-mb').value = data.max_file_mb;
+    } finally {
+      controls.forEach((control) => { control.disabled = false; });
+      $('settings-form').removeAttribute('aria-busy');
+    }
   }
   $('workspace-main').focus({preventScroll: true});
 }

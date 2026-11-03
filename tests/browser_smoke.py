@@ -102,6 +102,12 @@ def main():
                 expect(page.locator(".submission-card")).to_contain_text("jamie@example.com")
                 page.set_viewport_size({"width": 1440, "height": 1000})
                 page.screenshot(path=str(artifacts / "admin-desktop.png"), full_page=True)
+                # Delay the first settings load to exercise the fast-input race:
+                # controls must not accept edits that the response overwrites.
+                def slow_settings(route):
+                    time.sleep(.35)
+                    route.continue_()
+                page.route("**/api/admin/settings", slow_settings)
                 page.locator("#settings-nav").click()
                 page.locator("#max-files").fill("5")
                 page.locator("#settings-form button").click()
